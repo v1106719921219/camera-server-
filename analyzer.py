@@ -28,7 +28,9 @@ TAPO_USERNAME = os.getenv("TAPO_USERNAME", "")
 TAPO_PASSWORD = os.getenv("TAPO_PASSWORD", "")
 CAMERA_ID = os.getenv("CAMERA_ID", "tapo-c200-01")
 DETECTION_INTERVAL = int(os.getenv("DETECTION_INTERVAL", "3"))  # N フレームに1回検出
-COUNT_LINE_RATIO = float(os.getenv("COUNT_LINE_RATIO", "0.5"))  # カウントラインの位置（画面高さの割合）
+COUNT_LINE_RATIO = float(os.getenv("COUNT_LINE_RATIO", "0.5"))  # カウントラインの位置
+# COUNT_MODE: "horizontal"（上下移動を検出）または "vertical"（左右移動を検出）
+COUNT_MODE = os.getenv("COUNT_MODE", "vertical")
 
 # ROI（検出エリア）設定 - 外の通路を除外するために検出エリアを絞る
 # 例: ROI_X1=0.2, ROI_Y1=0.3, ROI_X2=0.8, ROI_Y2=0.9（画面の割合で指定）
@@ -138,7 +140,7 @@ class VisitorAnalyzer:
         self.period_out = 0      # 保存期間中の退店数
 
         # トラッキング状態
-        self.prev_positions = {}  # id -> 前回のy座標
+        self.prev_positions = {}  # id -> 前回の座標(x or y)
         self.last_counted = {}    # id -> 最後にカウントした時刻
 
         # カメラ状態
@@ -149,6 +151,7 @@ class VisitorAnalyzer:
 
         # ライン位置（初回フレームで設定）
         self.line_y = None
+        self.line_x = None
         self.frame_height = None
         self.frame_width = None
 
@@ -228,32 +231,56 @@ class VisitorAnalyzer:
         now = time.time()
 
         for obj_id, (cx, cy) in tracked_objects.items():
+            # 縦ライン（左右移動）モード
+            if COUNT_MODE == "vertical":
+                pos = cx
+                line = self.line_x
+            else:
+                # 横ライン（上下移動）モード
+                pos = cy
+                line = self.line_y
+
             if obj_id in self.prev_positions:
-                prev_y = self.prev_positions[obj_id]
+                prev_pos = self.prev_positions[obj_id]
 
                 # 重複カウント防止
                 if obj_id in self.last_counted:
                     if now - self.last_counted[obj_id] < RECOUNT_COOLDOWN:
-                        self.prev_positions[obj_id] = cy
+                        self.prev_positions[obj_id] = pos
                         continue
 
-                # 下→上（入店）
-                if prev_y > self.line_y and cy <= self.line_y:
-                    with self.lock:
-                        self.in_count += 1
-                        self.period_in += 1
-                    self.last_counted[obj_id] = now
-                    print(f"[COUNT] 入店 (+1) | 累計入店: {self.in_count} | 店内推定: {self.current_in_store}")
+                if COUNT_MODE == "vertical":
+                    # 左→右（入店）
+                    if prev_pos < line and pos >= line:
+                        with self.lock:
+                            self.in_count += 1
+                            self.period_in += 1
+                        self.last_counted[obj_id] = now
+                        print(f"[COUNT] 入店 (+1) | 累計入店: {self.in_count} | 店内推定: {self.current_in_store}")
+                    # 右→左（退店）
+                    elif prev_pos > line and pos <= line:
+                        with self.lock:
+                            self.out_count += 1
+                            self.period_out += 1
+                        self.last_counted[obj_id] = now
+                        print(f"[COUNT] 退店 (+1) | 累計退店: {self.out_count} | 店内推定: {self.current_in_store}")
+                else:
+                    # 下→上（入店）
+                    if prev_pos > line and pos <= line:
+                        with self.lock:
+                            self.in_count += 1
+                            self.period_in += 1
+                        self.last_counted[obj_id] = now
+                        print(f"[COUNT] 入店 (+1) | 累計入店: {self.in_count} | 店内推定: {self.current_in_store}")
+                    # 上→下（退店）
+                    elif prev_pos < line and pos >= line:
+                        with self.lock:
+                            self.out_count += 1
+                            self.period_out += 1
+                        self.last_counted[obj_id] = now
+                        print(f"[COUNT] 退店 (+1) | 累計退店: {self.out_count} | 店内推定: {self.current_in_store}")
 
-                # 上→下（退店）
-                elif prev_y < self.line_y and cy >= self.line_y:
-                    with self.lock:
-                        self.out_count += 1
-                        self.period_out += 1
-                    self.last_counted[obj_id] = now
-                    print(f"[COUNT] 退店 (+1) | 累計退店: {self.out_count} | 店内推定: {self.current_in_store}")
-
-            self.prev_positions[obj_id] = cy
+            self.prev_positions[obj_id] = pos
 
         # 消えたトラッキングIDをクリーンアップ
         active_ids = set(tracked_objects.keys())
@@ -331,8 +358,13 @@ class VisitorAnalyzer:
             if self.line_y is None:
                 self.frame_height, self.frame_width = frame.shape[:2]
                 self.line_y = int(self.frame_height * COUNT_LINE_RATIO)
+                self.line_x = int(self.frame_width * COUNT_LINE_RATIO)
                 print(f"[INFO] フレームサイズ: {self.frame_width}x{self.frame_height}")
-                print(f"[INFO] カウントライン Y={self.line_y}")
+                print(f"[INFO] カウントモード: {COUNT_MODE}")
+                if COUNT_MODE == "vertical":
+                    print(f"[INFO] カウントライン X={self.line_x}")
+                else:
+                    print(f"[INFO] カウントライン Y={self.line_y}")
 
             frame_idx += 1
             self.frame_count = frame_idx

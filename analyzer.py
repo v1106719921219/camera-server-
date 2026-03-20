@@ -30,6 +30,14 @@ CAMERA_ID = os.getenv("CAMERA_ID", "tapo-c200-01")
 DETECTION_INTERVAL = int(os.getenv("DETECTION_INTERVAL", "3"))  # N フレームに1回検出
 COUNT_LINE_RATIO = float(os.getenv("COUNT_LINE_RATIO", "0.5"))  # カウントラインの位置（画面高さの割合）
 
+# ROI（検出エリア）設定 - 外の通路を除外するために検出エリアを絞る
+# 例: ROI_X1=0.2, ROI_Y1=0.3, ROI_X2=0.8, ROI_Y2=0.9（画面の割合で指定）
+# 0.0〜1.0で指定。デフォルトは画面全体（制限なし）
+ROI_X1 = float(os.getenv("ROI_X1", "0.0"))
+ROI_Y1 = float(os.getenv("ROI_Y1", "0.0"))
+ROI_X2 = float(os.getenv("ROI_X2", "1.0"))
+ROI_Y2 = float(os.getenv("ROI_Y2", "1.0"))
+
 RTSP_URL = f"rtsp://{TAPO_USERNAME}:{TAPO_PASSWORD}@{CAMERA_IP}/stream1"
 MAX_RECONNECT = 5
 RECONNECT_INTERVAL = 5  # 秒
@@ -182,7 +190,15 @@ class VisitorAnalyzer:
         print("[OK] モデルロード完了")
 
     def _detect_persons(self, frame):
-        """フレームから人物を検出し、中心座標のリストを返す"""
+        """フレームから人物を検出し、中心座標のリストを返す（ROI制限あり）"""
+        h, w = frame.shape[:2]
+
+        # ROIのピクセル座標
+        roi_x1 = int(w * ROI_X1)
+        roi_y1 = int(h * ROI_Y1)
+        roi_x2 = int(w * ROI_X2)
+        roi_y2 = int(h * ROI_Y2)
+
         results = self.model(frame, classes=[0], verbose=False)  # class 0 = person
 
         centroids = []
@@ -197,6 +213,11 @@ class VisitorAnalyzer:
 
                 cx = (x1 + x2) // 2
                 cy = (y1 + y2) // 2
+
+                # ROIの外にいる人は無視
+                if not (roi_x1 <= cx <= roi_x2 and roi_y1 <= cy <= roi_y2):
+                    continue
+
                 centroids.append((cx, cy))
                 boxes.append((x1, y1, x2, y2, conf))
 

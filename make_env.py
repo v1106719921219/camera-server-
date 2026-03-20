@@ -9,7 +9,7 @@ TAPO_USERNAME=kaitorisquare@gmail.com
 TAPO_PASSWORD=Tessa123.0
 CAMERA_IP=192.168.11.62
 CAMERA_ID=tapo-c200-01
-ROI_X2=0.6
+ROI_X2=0.75
 """
 
 with open(".env", "w", newline="\n") as f:

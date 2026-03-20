@@ -11,7 +11,7 @@ CAMERA_IP=192.168.11.62
 CAMERA_ID=tapo-c200-01
 ROI_X2=1.0
 COUNT_MODE=vertical
-COUNT_LINE_RATIO=0.35
+COUNT_LINE_RATIO=0.45
 """
 
 with open(".env", "w", newline="\n") as f:

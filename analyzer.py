@@ -342,9 +342,10 @@ class VisitorAnalyzer:
 
         self._load_model()
 
-        if not self._connect_camera():
-            self.running = False
-            return
+        # 接続できるまで無限リトライ
+        while self.running and not self._connect_camera():
+            print("[INFO] 60秒後に再試行します...")
+            time.sleep(60)
 
         print(f"[INFO] 解析開始 (検出間隔: {DETECTION_INTERVAL}フレームに1回)")
         print(f"[INFO] カウントライン位置: 画面高さの {COUNT_LINE_RATIO*100:.0f}%")
@@ -360,9 +361,9 @@ class VisitorAnalyzer:
                 self.camera_connected = False
                 if self.cap:
                     self.cap.release()
-                if not self._connect_camera():
-                    print("[ERROR] 再接続失敗。解析を終了します。")
-                    break
+                while self.running and not self._connect_camera():
+                    print("[INFO] 60秒後に再試行します...")
+                    time.sleep(60)
                 continue
 
             # 初回フレームでライン位置を設定

@@ -31,6 +31,8 @@ DETECTION_INTERVAL = int(os.getenv("DETECTION_INTERVAL", "3"))  # N フレーム
 COUNT_LINE_RATIO = float(os.getenv("COUNT_LINE_RATIO", "0.5"))  # カウントラインの位置
 # COUNT_MODE: "horizontal"（上下移動を検出）または "vertical"（左右移動を検出）
 COUNT_MODE = os.getenv("COUNT_MODE", "vertical")
+# COUNT_REVERSE: "true" にすると入退店の方向を逆にする
+COUNT_REVERSE = os.getenv("COUNT_REVERSE", "false").lower() == "true"
 
 # ROI（検出エリア）設定 - 外の通路を除外するために検出エリアを絞る
 # 例: ROI_X1=0.2, ROI_Y1=0.3, ROI_X2=0.8, ROI_Y2=0.9（画面の割合で指定）
@@ -265,15 +267,24 @@ class VisitorAnalyzer:
                         self.last_counted[obj_id] = now
                         print(f"[COUNT] 退店 (+1) | 累計退店: {self.out_count} | 店内推定: {self.current_in_store}")
                 else:
-                    # 下→上（入店）
-                    if prev_pos > line and pos <= line:
+                    # 上→下 or 下→上（COUNT_REVERSEで方向切り替え）
+                    crossed_forward = prev_pos < line and pos >= line  # 上→下
+                    crossed_backward = prev_pos > line and pos <= line  # 下→上
+
+                    if COUNT_REVERSE:
+                        is_enter = crossed_forward   # 上→下が入店
+                        is_exit = crossed_backward   # 下→上が退店
+                    else:
+                        is_enter = crossed_backward  # 下→上が入店
+                        is_exit = crossed_forward    # 上→下が退店
+
+                    if is_enter:
                         with self.lock:
                             self.in_count += 1
                             self.period_in += 1
                         self.last_counted[obj_id] = now
                         print(f"[COUNT] 入店 (+1) | 累計入店: {self.in_count} | 店内推定: {self.current_in_store}")
-                    # 上→下（退店）
-                    elif prev_pos < line and pos >= line:
+                    elif is_exit:
                         with self.lock:
                             self.out_count += 1
                             self.period_out += 1

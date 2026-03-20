@@ -10,8 +10,9 @@ TAPO_PASSWORD=Tessa123.0
 CAMERA_IP=192.168.11.62
 CAMERA_ID=tapo-c200-01
 ROI_X2=1.0
-COUNT_MODE=vertical
-COUNT_LINE_RATIO=0.45
+COUNT_MODE=horizontal
+COUNT_LINE_RATIO=0.3
+COUNT_REVERSE=true
 """
 
 with open(".env", "w", newline="\n") as f:
